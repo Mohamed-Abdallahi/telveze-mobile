@@ -38,8 +38,8 @@ export default function TabLayout() {
         tabBarStyle: {
           position: "absolute",
           backgroundColor: "transparent",
-          borderTopColor: "rgba(255,255,255,0.18)",
-          borderTopWidth: 1,
+          borderTopColor: "rgba(255,255,255,0.1)",
+          borderTopWidth: 0.5,
           height: 84,
           left: 14,
           right: 14,
@@ -56,7 +56,7 @@ export default function TabLayout() {
             style={{
               flex: 1,
               borderRadius: 26,
-              backgroundColor: "rgba(8,12,20,0.28)",
+              backgroundColor: "rgba(8,12,20,0.16)",
             }}
           />
         ),
