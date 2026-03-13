@@ -1,9 +1,10 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useAuth, useSSO, useSignUp } from "@clerk/expo";
+import { Ionicons } from "@expo/vector-icons";
 import { Link, Redirect } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 
 const HOME_ROUTE = "/" as const;
 
@@ -13,13 +14,10 @@ type ClerkErrorMessage = {
 };
 
 export default function Page() {
-  const { signUp, errors, fetchStatus } = useSignUp();
+  const { signUp, errors } = useSignUp();
   const { startSSOFlow } = useSSO();
   const { isLoaded, isSignedIn } = useAuth();
 
-  const [emailAddress, setEmailAddress] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [code, setCode] = React.useState("");
   const [oauthLoading, setOauthLoading] = React.useState(false);
   const [oauthError, setOauthError] = React.useState<string | null>(null);
   const firstError =
@@ -28,40 +26,6 @@ export default function Page() {
 
   const globalErrorMessage =
     firstError?.longMessage ?? firstError?.message ?? null;
-
-  const handleSubmit = async () => {
-    const { error } = await signUp.password({
-      emailAddress,
-      password,
-    });
-    if (error) {
-      console.error(JSON.stringify(error, null, 2));
-      return;
-    }
-
-    if (!error) await signUp.verifications.sendEmailCode();
-  };
-
-  const handleVerify = async () => {
-    await signUp.verifications.verifyEmailCode({
-      code,
-    });
-    if (signUp.status === "complete") {
-      await signUp.finalize({
-        navigate: ({ session }) => {
-          if (session?.currentTask) {
-            // Handle pending session tasks
-            // See https://clerk.com/docs/guides/development/custom-flows/authentication/session-tasks
-            console.log(session?.currentTask);
-            return;
-          }
-        },
-      });
-    } else {
-      // Check why the sign-up is not complete
-      console.error("Sign-up attempt not complete:", signUp);
-    }
-  };
 
   const handleGoogleSignUp = async () => {
     setOauthError(null);
@@ -93,126 +57,55 @@ export default function Page() {
     return <Redirect href={HOME_ROUTE} />;
   }
 
-  if (
-    signUp.status === "missing_requirements" &&
-    signUp.unverifiedFields.includes("email_address") &&
-    signUp.missingFields.length === 0
-  ) {
-    return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="title" style={styles.title}>
-          Verify your account
-        </ThemedText>
-        <TextInput
-          style={styles.input}
-          value={code}
-          placeholder="Enter your verification code"
-          placeholderTextColor="#666666"
-          onChangeText={(code) => setCode(code)}
-          keyboardType="numeric"
-        />
-        {errors.fields.code && (
-          <ThemedText style={styles.error}>
-            {errors.fields.code.message}
-          </ThemedText>
-        )}
-        <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            fetchStatus === "fetching" && styles.buttonDisabled,
-            pressed && styles.buttonPressed,
-          ]}
-          onPress={handleVerify}
-          disabled={fetchStatus === "fetching"}
-        >
-          <ThemedText style={styles.buttonText}>Verify</ThemedText>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            pressed && styles.buttonPressed,
-          ]}
-          onPress={() => signUp.verifications.sendEmailCode()}
-        >
-          <ThemedText style={styles.secondaryButtonText}>
-            I need a new code
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
-    );
-  }
-
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title" style={styles.title}>
-        Sign up
-      </ThemedText>
-      <ThemedText style={styles.label}>Email address</ThemedText>
-      <TextInput
-        style={styles.input}
-        autoCapitalize="none"
-        value={emailAddress}
-        placeholder="Enter email"
-        placeholderTextColor="#666666"
-        onChangeText={(emailAddress) => setEmailAddress(emailAddress)}
-        keyboardType="email-address"
-      />
-      {errors.fields.emailAddress && (
-        <ThemedText style={styles.error}>
-          {errors.fields.emailAddress.message}
-        </ThemedText>
-      )}
-      <ThemedText style={styles.label}>Password</ThemedText>
-      <TextInput
-        style={styles.input}
-        value={password}
-        placeholder="Enter password"
-        placeholderTextColor="#666666"
-        secureTextEntry={true}
-        onChangeText={(password) => setPassword(password)}
-      />
-      {errors.fields.password && (
-        <ThemedText style={styles.error}>
-          {errors.fields.password.message}
-        </ThemedText>
-      )}
-      <Pressable
-        style={({ pressed }) => [
-          styles.button,
-          (!emailAddress || !password || fetchStatus === "fetching") &&
-            styles.buttonDisabled,
-          pressed && styles.buttonPressed,
-        ]}
-        onPress={handleSubmit}
-        disabled={!emailAddress || !password || fetchStatus === "fetching"}
-      >
-        <ThemedText style={styles.buttonText}>Sign up</ThemedText>
-      </Pressable>
-      <Pressable
-        style={({ pressed }) => [
-          styles.secondaryButton,
-          oauthLoading && styles.buttonDisabled,
-          pressed && styles.buttonPressed,
-        ]}
-        onPress={handleGoogleSignUp}
-        disabled={oauthLoading}
-      >
-        <ThemedText style={styles.secondaryButtonText}>
-          {oauthLoading ? "Connecting to Google..." : "Continue with Google"}
-        </ThemedText>
-      </Pressable>
+      {/* Logo */}
+      <View style={styles.logoContainer}>
+        <Image
+          source={require("@/assets/images/logo-telvese.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </View>
 
-      {(globalErrorMessage || oauthError) && (
-        <ThemedText style={styles.error}>
-          {oauthError ?? globalErrorMessage}
+      <View style={styles.contentContainer}>
+        <ThemedText style={styles.title}>Create Account</ThemedText>
+        <ThemedText style={styles.subtitle}>
+          Join us to start watching
         </ThemedText>
-      )}
 
-      <View style={styles.linkContainer}>
-        <ThemedText>Already have an account? </ThemedText>
-        <Link href="/(auth)/sign-in">
-          <ThemedText type="link">Sign in</ThemedText>
-        </Link>
+        {/* Google Sign Up Button */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.googleButton,
+            oauthLoading && styles.buttonDisabled,
+            pressed && styles.buttonPressed,
+          ]}
+          onPress={handleGoogleSignUp}
+          disabled={oauthLoading}
+        >
+          <Ionicons name="logo-google" size={24} color="#000" />
+          <ThemedText style={styles.googleButtonText}>
+            {oauthLoading ? "Connecting..." : "Continue with Google"}
+          </ThemedText>
+        </Pressable>
+
+        {(globalErrorMessage || oauthError) && (
+          <ThemedText style={styles.error}>
+            {oauthError ?? globalErrorMessage}
+          </ThemedText>
+        )}
+
+        <View style={styles.linkContainer}>
+          <ThemedText style={styles.linkText}>
+            Already have an account?{" "}
+          </ThemedText>
+          <Link href="/(auth)/sign-in" asChild>
+            <Pressable>
+              <ThemedText style={styles.link}>Sign in</ThemedText>
+            </Pressable>
+          </Link>
+        </View>
       </View>
 
       {/* Required for sign-up flows. Clerk's bot sign-up protection is enabled by default */}
@@ -224,62 +117,85 @@ export default function Page() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    gap: 12,
+    backgroundColor: "#000000",
+  },
+  logoContainer: {
+    alignItems: "center",
+    marginTop: 100,
+    marginBottom: 40,
+  },
+  logo: {
+    width: 400,
+    height: 180,
+  },
+  contentContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+    alignItems: "center",
   },
   title: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#FF6B00",
     marginBottom: 8,
+    textAlign: "center",
   },
-  label: {
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 12,
+  subtitle: {
     fontSize: 16,
-    backgroundColor: "#fff",
+    color: "#FFA500",
+    marginBottom: 48,
+    textAlign: "center",
+    opacity: 0.8,
   },
-  button: {
-    backgroundColor: "#0a7ea4",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+  googleButton: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
+    justifyContent: "center",
+    backgroundColor: "#FF6B00",
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    width: "100%",
+    maxWidth: 320,
+    gap: 12,
+    marginBottom: 24,
+    shadowColor: "#FF6B00",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  googleButtonText: {
+    color: "#000000",
+    fontSize: 18,
+    fontWeight: "600",
   },
   buttonPressed: {
-    opacity: 0.7,
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
   buttonDisabled: {
     opacity: 0.5,
   },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  secondaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    color: "#0a7ea4",
-    fontWeight: "600",
-  },
   linkContainer: {
     flexDirection: "row",
-    gap: 4,
-    marginTop: 12,
+    marginTop: 24,
     alignItems: "center",
   },
+  linkText: {
+    color: "#FFA500",
+    fontSize: 16,
+  },
+  link: {
+    color: "#FF6B00",
+    fontSize: 16,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
   error: {
-    color: "#d32f2f",
-    fontSize: 12,
-    marginTop: -8,
+    color: "#FF4444",
+    fontSize: 14,
+    marginTop: 16,
+    textAlign: "center",
   },
 });
