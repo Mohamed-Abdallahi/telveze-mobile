@@ -122,7 +122,7 @@ export default function HomeScreenContent() {
         pointerEvents="none"
       />
 
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}> 
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.logoContainer}>
           <Image
             source={require("@/assets/images/logo-telvese.png")}

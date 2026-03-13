@@ -22,13 +22,12 @@ export default function Page() {
   const [code, setCode] = React.useState("");
   const [oauthLoading, setOauthLoading] = React.useState(false);
   const [oauthError, setOauthError] = React.useState<string | null>(null);
-  const firstError = (errors.raw?.[0] as ClerkErrorMessage | undefined) ??
+  const firstError =
+    (errors.raw?.[0] as ClerkErrorMessage | undefined) ??
     (errors.global?.[0] as ClerkErrorMessage | undefined);
 
   const globalErrorMessage =
-    firstError?.longMessage ??
-    firstError?.message ??
-    null;
+    firstError?.longMessage ?? firstError?.message ?? null;
 
   const handleSubmit = async () => {
     const { error } = await signUp.password({
