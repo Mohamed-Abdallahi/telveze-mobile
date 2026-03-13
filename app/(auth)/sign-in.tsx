@@ -1,32 +1,34 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { useSSO, useSignIn } from "@clerk/expo";
-import { Link, useRouter } from "expo-router";
+import { useAuth, useSSO, useSignIn } from "@clerk/expo";
+import { Link, Redirect } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-const HOME_ROUTE = "/(tabs)/index" as const;
+const HOME_ROUTE = "/" as const;
+
+type ClerkErrorMessage = {
+  longMessage?: string;
+  message?: string;
+};
 
 export default function Page() {
+  const { isLoaded, isSignedIn } = useAuth();
   const { signIn, errors, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
-  const router = useRouter();
 
   const [emailAddress, setEmailAddress] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
   const [oauthLoading, setOauthLoading] = React.useState(false);
   const [oauthError, setOauthError] = React.useState<string | null>(null);
+  const firstError = (errors.raw?.[0] as ClerkErrorMessage | undefined) ??
+    (errors.global?.[0] as ClerkErrorMessage | undefined);
 
   const globalErrorMessage =
-    errors.global?.message ??
-    errors.raw?.[0]?.longMessage ??
-    errors.raw?.[0]?.message ??
+    firstError?.longMessage ??
+    firstError?.message ??
     null;
-
-  const navigateToHome = () => {
-    router.replace(HOME_ROUTE);
-  };
 
   const handleSubmit = async () => {
     const { error } = await signIn.password({
@@ -47,8 +49,6 @@ export default function Page() {
             console.log(session?.currentTask);
             return;
           }
-
-          navigateToHome();
         },
       });
     } else if (signIn.status === "needs_second_factor") {
@@ -81,8 +81,6 @@ export default function Page() {
             console.log(session?.currentTask);
             return;
           }
-
-          navigateToHome();
         },
       });
     } else {
@@ -102,7 +100,6 @@ export default function Page() {
 
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
-        navigateToHome();
       } else {
         setOauthError("Google sign-in was not completed. Please try again.");
       }
@@ -117,6 +114,10 @@ export default function Page() {
       setOauthLoading(false);
     }
   };
+
+  if (isLoaded && isSignedIn) {
+    return <Redirect href={HOME_ROUTE} />;
+  }
 
   if (signIn.status === "needs_client_trust") {
     return (
@@ -230,7 +231,7 @@ export default function Page() {
       )}
 
       <View style={styles.linkContainer}>
-        <ThemedText>Don't have an account? </ThemedText>
+        <ThemedText>Don&apos;t have an account? </ThemedText>
         <Link href="/(auth)/sign-up">
           <ThemedText type="link">Sign up</ThemedText>
         </Link>

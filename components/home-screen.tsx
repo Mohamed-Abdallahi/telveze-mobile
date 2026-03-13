@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const POSTER_HEIGHT = SCREEN_WIDTH * 0.5625; // 16:9 aspect ratio
+const POSTER_HEIGHT = SCREEN_WIDTH * 0.5625;
 
 const fallbackPoster = require("@/assets/images/levrig.jpeg");
 
@@ -28,7 +28,7 @@ type HomeCategory = {
   genre?: string;
 };
 
-export default function HomeScreen() {
+export default function HomeScreenContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -116,14 +116,13 @@ export default function HomeScreen() {
         translucent
       />
 
-      {/* Header with Logo and Navigation */}
       <LinearGradient
         colors={["rgba(0,0,0,0.8)", "transparent"]}
         style={[styles.headerGradient, { paddingTop: insets.top }]}
         pointerEvents="none"
       />
 
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}> 
         <View style={styles.logoContainer}>
           <Image
             source={require("@/assets/images/logo-telvese.png")}
@@ -143,7 +142,6 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 30 }]}
       >
-        {/* Featured Series Hero Section */}
         {loading ? (
           <View style={[styles.heroContainer, styles.centerState]}>
             <ActivityIndicator size="large" color="#fff" />
@@ -211,10 +209,6 @@ export default function HomeScreen() {
                     Details
                   </ThemedText>
                 </TouchableOpacity>
-
-                {/* <TouchableOpacity style={styles.iconCircleButton}>
-                  <Ionicons name="add" size={24} color="#fff" />
-                </TouchableOpacity> */}
               </View>
             </View>
           </View>
@@ -226,7 +220,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Categories Sections */}
         {categories.map((category, index) => (
           <View
             key={category.id}

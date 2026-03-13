@@ -9,7 +9,7 @@ export default function OAuthNativeCallback() {
   }
 
   if (isSignedIn) {
-    return <Redirect href="/(tabs)/index" />;
+    return <Redirect href="/" />;
   }
 
   return <Redirect href="/(auth)/sign-in" />;

@@ -1,18 +1,13 @@
 import { useAuth } from "@clerk/expo";
-import { router } from "expo-router";
-import { useEffect } from "react";
+import { Redirect } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
 
 export default function SSOCallback() {
   const { isSignedIn, isLoaded } = useAuth();
 
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    if (isSignedIn) {
-      router.replace("/");
-    }
-  }, [isLoaded, isSignedIn]);
+  if (isLoaded) {
+    return <Redirect href={isSignedIn ? "/" : "/(auth)/sign-in"} />;
+  }
 
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>

@@ -1,33 +1,34 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useAuth, useSSO, useSignUp } from "@clerk/expo";
-import { Link, useRouter } from "expo-router";
+import { Link, Redirect } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-const HOME_ROUTE = "/(tabs)/index" as const;
+const HOME_ROUTE = "/" as const;
+
+type ClerkErrorMessage = {
+  longMessage?: string;
+  message?: string;
+};
 
 export default function Page() {
   const { signUp, errors, fetchStatus } = useSignUp();
   const { startSSOFlow } = useSSO();
-  const { isSignedIn } = useAuth();
-  const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
 
   const [emailAddress, setEmailAddress] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
   const [oauthLoading, setOauthLoading] = React.useState(false);
   const [oauthError, setOauthError] = React.useState<string | null>(null);
+  const firstError = (errors.raw?.[0] as ClerkErrorMessage | undefined) ??
+    (errors.global?.[0] as ClerkErrorMessage | undefined);
 
   const globalErrorMessage =
-    errors.global?.message ??
-    errors.raw?.[0]?.longMessage ??
-    errors.raw?.[0]?.message ??
+    firstError?.longMessage ??
+    firstError?.message ??
     null;
-
-  const navigateToHome = () => {
-    router.replace(HOME_ROUTE);
-  };
 
   const handleSubmit = async () => {
     const { error } = await signUp.password({
@@ -48,7 +49,6 @@ export default function Page() {
     });
     if (signUp.status === "complete") {
       await signUp.finalize({
-        // Redirect the user to the home page after signing up
         navigate: ({ session }) => {
           if (session?.currentTask) {
             // Handle pending session tasks
@@ -56,8 +56,6 @@ export default function Page() {
             console.log(session?.currentTask);
             return;
           }
-
-          navigateToHome();
         },
       });
     } else {
@@ -77,7 +75,6 @@ export default function Page() {
 
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
-        navigateToHome();
       } else {
         setOauthError("Google sign-up was not completed. Please try again.");
       }
@@ -93,8 +90,8 @@ export default function Page() {
     }
   };
 
-  if (signUp.status === "complete" || isSignedIn) {
-    return null;
+  if (isLoaded && (signUp.status === "complete" || isSignedIn)) {
+    return <Redirect href={HOME_ROUTE} />;
   }
 
   if (

@@ -9,7 +9,7 @@ export default function AuthRoutesLayout() {
   }
 
   if (isSignedIn) {
-    return <Redirect href={"/(tabs)/index"} />;
+    return <Redirect href="/" />;
   }
 
   return <Stack />;
