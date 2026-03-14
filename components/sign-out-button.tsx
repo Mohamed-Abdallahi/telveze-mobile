@@ -1,6 +1,7 @@
 import { ThemedText } from "@/components/themed-text";
 import { useClerk } from "@clerk/expo";
-import { Pressable, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Pressable, StyleSheet, View } from "react-native";
 
 export const SignOutButton = () => {
   const { signOut } = useClerk();
@@ -18,25 +19,35 @@ export const SignOutButton = () => {
       style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       onPress={handleSignOut}
     >
-      <ThemedText style={styles.buttonText}>Sign out</ThemedText>
+      <View style={styles.content}>
+        <Ionicons name="log-out-outline" size={16} color="#ffffff" />
+        <ThemedText style={styles.buttonText}>Logout</ThemedText>
+      </View>
     </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: "#0a7ea4",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    alignSelf: "center",
+    backgroundColor: "#dc2626",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 4,
+  },
+  content: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   buttonPressed: {
     opacity: 0.7,
   },
   buttonText: {
     color: "#fff",
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 13,
   },
 });

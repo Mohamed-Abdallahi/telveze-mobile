@@ -1,12 +1,14 @@
-import { ClerkLoaded, ClerkProvider } from "@clerk/expo";
+import { ClerkLoaded, ClerkLoading, ClerkProvider } from "@clerk/expo";
 import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
 import { Stack } from "expo-router";
+import { usePreventScreenCapture } from "expo-screen-capture";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
+import { ActivityIndicator, View } from "react-native";
 import "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -32,7 +34,22 @@ const tokenCache = {
 };
 
 export default function RootLayout() {
+  usePreventScreenCapture();
+
   const colorScheme = useColorScheme();
+  const navigationTheme =
+    colorScheme === "dark"
+      ? DarkTheme
+      : {
+          ...DefaultTheme,
+          colors: {
+            ...DefaultTheme.colors,
+            background: "#0A0A0F",
+            card: "#0A0A0F",
+            border: "rgba(255,255,255,0.12)",
+            text: "#F8FAFC",
+          },
+        };
 
   if (!publishableKey) {
     throw new Error(
@@ -43,11 +60,22 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <SafeAreaProvider>
-        <ThemeProvider
-          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-        >
+        <ThemeProvider value={navigationTheme}>
+          <ClerkLoading>
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#000000",
+              }}
+            >
+              <ActivityIndicator size="large" color="#ff5e00" />
+            </View>
+          </ClerkLoading>
           <ClerkLoaded>
-            <Stack>
+            <Stack initialRouteName="index">
+              <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen
@@ -61,7 +89,8 @@ export default function RootLayout() {
               <Stack.Screen
                 name="series/[seriesId]/episodes"
                 options={{
-                  title: "Episodes",
+                  title: "",
+                  headerBackTitle: "Home",
                   headerStyle: { backgroundColor: "#000" },
                   headerTintColor: "#fff",
                   headerTitleStyle: { color: "#fff" },

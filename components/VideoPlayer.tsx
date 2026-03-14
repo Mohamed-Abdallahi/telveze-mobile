@@ -1,6 +1,8 @@
 import { ThemedText } from "@/components/themed-text";
 import { videosAPI } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Slider from "@react-native-community/slider";
 import { AVPlaybackStatus, ResizeMode, Video } from "expo-av";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -14,10 +16,15 @@ import {
 
 interface VideoPlayerProps {
   videoId: string;
+  progressId?: string;
   onClose?: () => void;
 }
 
-export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
+export default function VideoPlayer({
+  videoId,
+  progressId,
+  onClose,
+}: VideoPlayerProps) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const videoRef = useRef<Video>(null);
   const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
@@ -28,12 +35,17 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
   const [videoDuration, setVideoDuration] = useState(0);
   const [isRotated, setIsRotated] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubProgress, setScrubProgress] = useState(0);
   const progressSaveInterval = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestStatusRef = useRef<AVPlaybackStatus | null>(null);
   const latestDurationRef = useRef(0);
+  const hasAppliedStartPositionRef = useRef(false);
+  const progressKey = progressId || videoId;
+  const localProgressKey = `watch-progress:${progressKey}`;
 
   const clearProgressInterval = () => {
     if (progressSaveInterval.current) {
@@ -71,17 +83,37 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
 
   const saveProgressSnapshot = async (snapshot?: AVPlaybackStatus | null) => {
     const currentStatus = snapshot ?? latestStatusRef.current;
-    const currentDuration = latestDurationRef.current;
-
-    if (!currentStatus?.isLoaded || !currentDuration) return;
+    if (!currentStatus?.isLoaded) return;
 
     const currentSecond = Math.floor(currentStatus.positionMillis / 1000);
+    const statusDurationSeconds = currentStatus.durationMillis
+      ? Math.floor(currentStatus.durationMillis / 1000)
+      : 0;
+    const derivedDuration = Math.max(
+      latestDurationRef.current,
+      statusDurationSeconds,
+      currentSecond + 1,
+      1,
+    );
+
+    try {
+      await AsyncStorage.setItem(
+        localProgressKey,
+        JSON.stringify({
+          currentSecond,
+          videoDuration: derivedDuration,
+          updatedAt: Date.now(),
+        }),
+      );
+    } catch {
+      // ignore local cache failures and continue.
+    }
 
     try {
       await videosAPI.saveWatchProgress(
-        videoId,
+        progressKey,
         currentSecond,
-        currentDuration,
+        derivedDuration,
       );
     } catch (saveError) {
       console.error("Failed to save progress:", saveError);
@@ -99,6 +131,7 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
         setStreamUrl("");
         setStartPosition(0);
         setVideoDuration(0);
+        hasAppliedStartPositionRef.current = false;
         latestStatusRef.current = null;
         latestDurationRef.current = 0;
 
@@ -111,16 +144,60 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
         if (!mounted) return;
         setStreamUrl(streamData.streamUrl);
 
+        let resolvedStartSecond = 0;
+
         try {
-          const progressData = await videosAPI.getWatchProgress(videoId);
+          const progressData = await videosAPI.getWatchProgress(progressKey);
           if (!mounted) return;
 
           if (progressData.success && progressData.progress) {
-            setStartPosition(progressData.progress.lastWatchedSecond || 0);
+            const remoteSecond = progressData.progress.lastWatchedSecond || 0;
+            const remoteDuration = progressData.progress.videoDuration || 0;
+            resolvedStartSecond = Math.max(resolvedStartSecond, remoteSecond);
+            if (remoteDuration > 0) {
+              latestDurationRef.current = Math.max(
+                latestDurationRef.current,
+                remoteDuration,
+              );
+            }
           }
         } catch {
           if (!mounted) return;
         }
+
+        try {
+          const cachedRaw = await AsyncStorage.getItem(localProgressKey);
+          if (!mounted) return;
+          if (!cachedRaw) {
+            // No local fallback yet; continue with remote progress only.
+          } else {
+            const cached = JSON.parse(cachedRaw) as {
+              currentSecond?: number;
+              videoDuration?: number;
+            };
+
+            const cachedSecond =
+              typeof cached.currentSecond === "number"
+                ? cached.currentSecond
+                : 0;
+            const cachedDuration =
+              typeof cached.videoDuration === "number"
+                ? cached.videoDuration
+                : 0;
+
+            resolvedStartSecond = Math.max(resolvedStartSecond, cachedSecond);
+            if (cachedDuration > 0) {
+              latestDurationRef.current = Math.max(
+                latestDurationRef.current,
+                cachedDuration,
+              );
+            }
+          }
+        } catch {
+          if (!mounted) return;
+        }
+
+        setStartPosition(resolvedStartSecond);
 
         if (!mounted) return;
         setLoading(false);
@@ -142,7 +219,7 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
       clearControlsTimeout();
       void saveProgressSnapshot();
     };
-  }, [videoId]);
+  }, [videoId, progressKey, localProgressKey]);
 
   useEffect(() => {
     if (status?.isLoaded && status.isPlaying) {
@@ -162,6 +239,34 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
       clearControlsTimeout();
     };
   }, [status]);
+
+  useEffect(() => {
+    const applyStartPosition = async () => {
+      if (
+        !videoRef.current ||
+        !status?.isLoaded ||
+        hasAppliedStartPositionRef.current ||
+        startPosition <= 0
+      ) {
+        return;
+      }
+
+      if (status.positionMillis > 2000) {
+        hasAppliedStartPositionRef.current = true;
+        return;
+      }
+
+      try {
+        await videoRef.current.setPositionAsync(startPosition * 1000);
+      } catch {
+        // ignore startup seek errors.
+      } finally {
+        hasAppliedStartPositionRef.current = true;
+      }
+    };
+
+    void applyStartPosition();
+  }, [startPosition, status]);
 
   const onPlaybackStatusUpdate = (playbackStatus: AVPlaybackStatus) => {
     latestStatusRef.current = playbackStatus;
@@ -187,6 +292,7 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
 
     if (status.isPlaying) {
       await videoRef.current.pauseAsync();
+      void saveProgressSnapshot();
     } else {
       await videoRef.current.playAsync();
     }
@@ -211,6 +317,28 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
   const toggleRotation = () => {
     revealControls();
     setIsRotated((currentValue) => !currentValue);
+  };
+
+  const handleScrubComplete = async (nextProgress: number) => {
+    if (!videoRef.current || !status?.isLoaded) {
+      setIsScrubbing(false);
+      return;
+    }
+
+    const durationMillis = status.durationMillis || 0;
+    const clampedProgress = Math.max(0, Math.min(1, nextProgress));
+    const targetMillis = Math.round(durationMillis * clampedProgress);
+
+    try {
+      await videoRef.current.setPositionAsync(targetMillis);
+    } catch {
+      // ignore scrub seek errors.
+    } finally {
+      setIsScrubbing(false);
+      setScrubProgress(clampedProgress);
+      revealControls();
+      void saveProgressSnapshot();
+    }
   };
 
   const handleVideoPress = () => {
@@ -266,6 +394,22 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
         { width: windowWidth, height: windowWidth * 0.5625 },
       ];
 
+  const playbackProgress =
+    status?.isLoaded && (status.durationMillis || 0) > 0
+      ? Math.max(
+          0,
+          Math.min(1, status.positionMillis / (status.durationMillis || 1)),
+        )
+      : 0;
+
+  const displayedProgress = isScrubbing ? scrubProgress : playbackProgress;
+  const displayedPositionMillis =
+    status?.isLoaded && (status.durationMillis || 0) > 0
+      ? Math.round((status.durationMillis || 0) * displayedProgress)
+      : status?.isLoaded
+        ? status.positionMillis
+        : 0;
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -297,10 +441,10 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
           source={{ uri: streamUrl }}
           style={videoFrameStyle}
           useNativeControls={false}
+          progressUpdateIntervalMillis={500}
           resizeMode={ResizeMode.CONTAIN}
           isLooping={false}
           onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-          positionMillis={startPosition * 1000}
           shouldPlay={true}
         />
 
@@ -367,10 +511,55 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
 
                 {status?.isLoaded && (
                   <View style={styles.progressInfoInline}>
-                    <ThemedText style={styles.timeText}>
-                      {formatTime(status.positionMillis)} /{" "}
-                      {formatTime(status.durationMillis || 0)}
-                    </ThemedText>
+                    <View style={styles.progressHeaderRow}>
+                      <ThemedText style={styles.timeText}>
+                        {formatTime(displayedPositionMillis)}
+                      </ThemedText>
+                      <ThemedText style={styles.timeDivider}>/</ThemedText>
+                      <ThemedText style={styles.timeTextMuted}>
+                        {formatTime(status.durationMillis || 0)}
+                      </ThemedText>
+                    </View>
+
+                    <Slider
+                      style={styles.progressSlider}
+                      minimumValue={0}
+                      maximumValue={1}
+                      value={displayedProgress}
+                      step={0}
+                      disabled={(status.durationMillis || 0) <= 0}
+                      minimumTrackTintColor="#ff5e00"
+                      maximumTrackTintColor="rgba(255,255,255,0.24)"
+                      thumbTintColor="#ff8a3d"
+                      onSlidingStart={() => {
+                        setIsScrubbing(true);
+                        setScrubProgress(playbackProgress);
+                        revealControls();
+                      }}
+                      onValueChange={(nextValue) => {
+                        setScrubProgress(nextValue);
+                      }}
+                      onSlidingComplete={(nextValue) => {
+                        void handleScrubComplete(nextValue);
+                      }}
+                    />
+
+                    <View style={styles.progressMetaRow}>
+                      <ThemedText style={styles.progressMetaText}>
+                        {Math.round(displayedProgress * 100)}% watched
+                      </ThemedText>
+                      <ThemedText style={styles.progressMetaText}>
+                        Drag to seek
+                      </ThemedText>
+                    </View>
+
+                    {startPosition > 0 && (
+                      <View style={styles.resumeNotice}>
+                        <ThemedText style={styles.resumeText}>
+                          Resumed from {formatTime(startPosition * 1000)}
+                        </ThemedText>
+                      </View>
+                    )}
                   </View>
                 )}
               </View>
@@ -378,14 +567,6 @@ export default function VideoPlayer({ videoId, onClose }: VideoPlayerProps) {
           )}
         </View>
       </View>
-
-      {startPosition > 0 && (
-        <View style={styles.resumeNotice}>
-          <ThemedText style={styles.resumeText}>
-            Resumed from {formatTime(startPosition * 1000)}
-          </ThemedText>
-        </View>
-      )}
     </View>
   );
 }
@@ -515,25 +696,61 @@ const styles = StyleSheet.create({
     top: 100,
     left: 20,
     right: 20,
-    backgroundColor: "rgba(229, 9, 20, 0.85)",
+    backgroundColor: "black",
     padding: 12,
     borderRadius: 8,
   },
   resumeText: {
-    color: "#fff",
+    color: "black",
     fontSize: 14,
     textAlign: "center",
     fontWeight: "600",
   },
   progressInfoInline: {
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    minWidth: 140,
-    padding: 8,
-    borderRadius: 4,
+    backgroundColor: "rgba(10, 10, 10, 0.78)",
+    minWidth: 280,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  progressHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  progressSlider: {
+    width: 256,
+    height: 30,
+    marginTop: 4,
   },
   timeText: {
-    color: "#fff",
+    color: "#ffffff",
     fontSize: 12,
-    textAlign: "center",
+    fontWeight: "700",
+  },
+  timeDivider: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  timeTextMuted: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  progressMetaRow: {
+    marginTop: 2,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressMetaText: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 11,
+    fontWeight: "500",
   },
 });

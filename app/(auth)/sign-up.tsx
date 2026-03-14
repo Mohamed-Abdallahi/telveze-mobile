@@ -125,8 +125,8 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logo: {
-    width: 400,
-    height: 180,
+    width: 200,
+    height: 200,
   },
   contentContainer: {
     flex: 1,

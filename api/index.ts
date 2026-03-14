@@ -108,7 +108,7 @@ const buildDevAccessToken = () => {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 0,
   headers: {
     "Content-Type": "application/json",
   },
@@ -173,6 +173,43 @@ export type EpisodeItem = {
     seasonNumber: number;
     title?: string;
   } | null;
+};
+
+type NormalizedWatchProgress = {
+  lastWatchedSecond: number;
+  videoDuration: number;
+  completed: boolean;
+};
+
+const normalizeWatchProgress = (payload: any): NormalizedWatchProgress => {
+  const source = payload?.progress || payload?.data || payload || {};
+
+  const watchedCandidates = [
+    source?.lastWatchedSecond,
+    source?.currentSecond,
+    source?.progressInSeconds,
+    source?.position,
+    source?.watchedSeconds,
+  ];
+  const durationCandidates = [
+    source?.videoDuration,
+    source?.duration,
+    source?.durationInSeconds,
+    source?.totalDuration,
+  ];
+
+  const watched = watchedCandidates.find(
+    (value) => typeof value === "number" && Number.isFinite(value),
+  );
+  const duration = durationCandidates.find(
+    (value) => typeof value === "number" && Number.isFinite(value),
+  );
+
+  return {
+    lastWatchedSecond: Math.max(0, watched || 0),
+    videoDuration: Math.max(0, duration || 0),
+    completed: Boolean(source?.completed),
+  };
 };
 
 export const videosAPI = {
@@ -318,7 +355,16 @@ export const videosAPI = {
 
   getWatchProgress: async (videoId: string) => {
     const response = await api.get("/watch-progress", { params: { videoId } });
-    return response.data;
+    const progress = normalizeWatchProgress(response.data);
+
+    return {
+      success:
+        typeof response.data?.success === "boolean"
+          ? response.data.success
+          : true,
+      progress,
+      raw: response.data,
+    };
   },
 
   saveWatchProgress: async (
@@ -328,8 +374,16 @@ export const videosAPI = {
   ) => {
     const response = await api.post("/watch-progress", {
       videoId,
+      episodeId: videoId,
       currentSecond,
+      lastWatchedSecond: currentSecond,
+      progressInSeconds: currentSecond,
       videoDuration,
+      duration: videoDuration,
+      completed:
+        videoDuration > 0
+          ? currentSecond / Math.max(videoDuration, 1) >= 0.95
+          : false,
     });
 
     return response.data;

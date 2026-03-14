@@ -4,10 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Dimensions,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -34,41 +34,118 @@ export default function HomeScreenContent() {
 
   const [series, setSeries] = useState<SeriesItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [progressById, setProgressById] = useState<Record<string, number>>({});
 
-  useEffect(() => {
-    let mounted = true;
+  const toRatio = (entry: any) => {
+    if (!entry) return 0;
 
-    const loadHomeSeries = async () => {
-      try {
+    const numericProgress =
+      entry.progress ??
+      entry.percentage ??
+      entry.completion ??
+      entry.progressPercent ??
+      null;
+
+    if (
+      typeof numericProgress === "number" &&
+      Number.isFinite(numericProgress)
+    ) {
+      return Math.max(
+        0,
+        Math.min(
+          1,
+          numericProgress > 1 ? numericProgress / 100 : numericProgress,
+        ),
+      );
+    }
+
+    const watched =
+      entry.currentSecond ?? entry.lastWatchedSecond ?? entry.position ?? 0;
+    const duration = entry.videoDuration ?? entry.duration ?? 0;
+    if (
+      typeof watched === "number" &&
+      typeof duration === "number" &&
+      duration > 0
+    ) {
+      return Math.max(0, Math.min(1, watched / duration));
+    }
+
+    return 0;
+  };
+
+  const buildProgressMap = (items: any[]) => {
+    const next: Record<string, number> = {};
+    for (const entry of items) {
+      const ratio = toRatio(entry);
+      const keyCandidates = [
+        entry?.seriesId,
+        entry?.contentId,
+        entry?.content?._id,
+        entry?.content?.id,
+      ].filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
+
+      for (const key of keyCandidates) {
+        next[key] = Math.max(next[key] || 0, ratio);
+      }
+    }
+
+    return next;
+  };
+
+  const loadHomeSeries = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
         setLoading(true);
-        setErrorMessage(null);
-        const result = await videosAPI.listSeries({
-          limit: 80,
-          publishedOnly: true,
-        });
-        if (!mounted) return;
-        setSeries(result.data || []);
-      } catch (error) {
-        if (!mounted) return;
-        setSeries([]);
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to load series. Check API URL and authentication.";
-        setErrorMessage(message);
-      } finally {
-        if (!mounted) return;
+      }
+      setErrorMessage(null);
+      const result = await videosAPI.listSeries({
+        limit: 80,
+        publishedOnly: true,
+      });
+      setSeries(result.data || []);
+
+      try {
+        const continuePayload = await videosAPI.getContinueWatching();
+        const items =
+          (Array.isArray(continuePayload?.data) && continuePayload.data) ||
+          (Array.isArray(continuePayload?.items) && continuePayload.items) ||
+          (Array.isArray(continuePayload) && continuePayload) ||
+          [];
+        setProgressById(buildProgressMap(items));
+      } catch {
+        setProgressById({});
+      }
+    } catch (error) {
+      setSeries([]);
+      setProgressById({});
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to load series. Check API URL and authentication.";
+      setErrorMessage(message);
+    } finally {
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
         setLoading(false);
       }
-    };
-
-    void loadHomeSeries();
-
-    return () => {
-      mounted = false;
-    };
+    }
   }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      await loadHomeSeries(false);
+    };
+
+    void load();
+  }, [loadHomeSeries]);
 
   const featuredSeries = series[0];
 
@@ -141,13 +218,39 @@ export default function HomeScreenContent() {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 30 }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void loadHomeSeries(true);
+            }}
+          />
+        }
       >
         {loading ? (
-          <View style={[styles.heroContainer, styles.centerState]}>
-            <ActivityIndicator size="large" color="#fff" />
-            <ThemedText style={styles.stateText}>
-              Loading featured series...
-            </ThemedText>
+          <View style={styles.skeletonContainer}>
+            <View style={styles.skeletonHero} />
+
+            <View style={styles.skeletonSection}>
+              <View style={styles.skeletonTitle} />
+              <View style={styles.skeletonRow}>
+                {[0, 1, 2].map((item) => (
+                  <View
+                    key={`trending-${item}`}
+                    style={styles.skeletonPosterCard}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.skeletonSection}>
+              <View style={styles.skeletonTitle} />
+              <View style={styles.skeletonRow}>
+                {[0, 1, 2].map((item) => (
+                  <View key={`new-${item}`} style={styles.skeletonPosterCard} />
+                ))}
+              </View>
+            </View>
           </View>
         ) : featuredSeries ? (
           <View style={styles.heroContainer}>
@@ -272,6 +375,20 @@ export default function HomeScreenContent() {
                     colors={["transparent", "rgba(0,0,0,0.8)"]}
                     style={styles.posterGradient}
                   />
+                  {(progressById[item._id] || 0) > 0 && (
+                    <View style={styles.posterProgressTrack}>
+                      <View
+                        style={[
+                          styles.posterProgressFill,
+                          {
+                            width: `${Math.round(
+                              (progressById[item._id] || 0) * 100,
+                            )}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                  )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -285,7 +402,7 @@ export default function HomeScreenContent() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0A0A0F",
+    backgroundColor: "#000000",
   },
   headerGradient: {
     position: "absolute",
@@ -328,6 +445,36 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 40,
+  },
+  skeletonContainer: {
+    paddingTop: 6,
+    gap: 24,
+    paddingBottom: 16,
+  },
+  skeletonHero: {
+    height: POSTER_HEIGHT * 1.2,
+    borderRadius: 14,
+    backgroundColor: "#1a1a1a",
+  },
+  skeletonSection: {
+    gap: 12,
+    paddingHorizontal: 20,
+  },
+  skeletonTitle: {
+    width: 140,
+    height: 18,
+    borderRadius: 6,
+    backgroundColor: "#2a2a2a",
+  },
+  skeletonRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  skeletonPosterCard: {
+    width: SCREEN_WIDTH * 0.3,
+    height: SCREEN_WIDTH * 0.45,
+    borderRadius: 12,
+    backgroundColor: "#1f1f1f",
   },
   heroContainer: {
     height: POSTER_HEIGHT * 1.2,
@@ -428,6 +575,25 @@ const styles = StyleSheet.create({
   categorySection: {
     marginTop: 32,
   },
+  continueRow: {
+    marginTop: 22,
+    marginHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  continueTitle: {
+    color: "#ff5e00",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  continueLine: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: "#ff5e00",
+    borderRadius: 999,
+    opacity: 0.85,
+  },
   categoryHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -470,6 +636,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: "50%",
+  },
+  posterProgressTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  posterProgressFill: {
+    width: "45%",
+    height: "100%",
+    backgroundColor: "#ff5e00",
   },
   centerState: {
     justifyContent: "center",

@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   },
   logo: {
     width: 200,
-    height: 80,
+    height: 200,
   },
   contentContainer: {
     flex: 1,

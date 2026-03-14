@@ -60,7 +60,13 @@ export default function PlayScreen() {
     );
   }
 
-  return <VideoPlayer videoId={assetId} onClose={() => router.back()} />;
+  return (
+    <VideoPlayer
+      videoId={assetId}
+      progressId={episodeId}
+      onClose={() => router.back()}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
