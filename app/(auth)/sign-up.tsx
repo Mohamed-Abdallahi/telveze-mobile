@@ -1,15 +1,14 @@
 import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import { useAuth, useSSO, useSignUp } from "@clerk/expo";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, Redirect } from "expo-router";
 import React from "react";
 import {
   Image,
+  ImageBackground,
   Pressable,
   StyleSheet,
   View,
-  ImageBackground,
 } from "react-native";
 
 const HOME_ROUTE = "/" as const;

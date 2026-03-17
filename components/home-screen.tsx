@@ -293,7 +293,9 @@ export default function HomeScreenContent() {
             {featuredSeries.trailerUrl && !featuredTrailerFailed && (
               <TouchableOpacity
                 style={styles.trailerMuteButton}
-                onPress={() => setIsTrailerMuted((currentValue) => !currentValue)}
+                onPress={() =>
+                  setIsTrailerMuted((currentValue) => !currentValue)
+                }
               >
                 <Ionicons
                   name={isTrailerMuted ? "volume-mute" : "volume-high"}

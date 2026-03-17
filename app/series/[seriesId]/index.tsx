@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from "expo-router";
 import { ResizeMode, Video } from "expo-av";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

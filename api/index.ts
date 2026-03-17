@@ -304,7 +304,8 @@ const normalizeSeries = (raw: any): SeriesItem | null => {
     title: String(raw?.title || raw?.name || "Series"),
     description: raw?.description,
     type,
-    posterUrl: raw?.posterUrl || raw?.posterURL || raw?.poster || raw?.thumbnailUrl,
+    posterUrl:
+      raw?.posterUrl || raw?.posterURL || raw?.poster || raw?.thumbnailUrl,
     trailerAssetId: raw?.trailerAssetId,
     trailerUrl: raw?.trailerUrl,
     genres: Array.isArray(raw?.genres) ? raw.genres : undefined,
@@ -474,9 +475,10 @@ export const videosAPI = {
       params,
     });
     const payload = response.data;
-    const source = payload?.data && typeof payload.data === "object"
-      ? payload.data
-      : payload;
+    const source =
+      payload?.data && typeof payload.data === "object"
+        ? payload.data
+        : payload;
     const series = normalizeSeries(source);
 
     return {
@@ -493,14 +495,7 @@ export const videosAPI = {
     limit?: number;
     _ts?: number;
   }) => {
-    const {
-      contentId,
-      seasonId,
-      search,
-      page,
-      limit,
-      _ts,
-    } = params;
+    const { contentId, seasonId, search, page, limit, _ts } = params;
 
     const baseParams = {
       seasonId,

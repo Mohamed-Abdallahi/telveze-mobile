@@ -287,14 +287,19 @@ export default function EpisodeListScreen() {
         setEpisodes(nextEpisodes);
 
         // Prefer normalized content poster from episodes payload when available.
-        const contentPoster = nextEpisodes.find((episode) => {
-          const poster = String(
-            episode?.contentPosterUrl || (episode as any)?.content?.posterUrl || "",
-          ).trim();
-          return poster.length > 0;
-        })?.contentPosterUrl ||
+        const contentPoster =
           nextEpisodes.find((episode) => {
-            const poster = String((episode as any)?.content?.posterUrl || "").trim();
+            const poster = String(
+              episode?.contentPosterUrl ||
+                (episode as any)?.content?.posterUrl ||
+                "",
+            ).trim();
+            return poster.length > 0;
+          })?.contentPosterUrl ||
+          nextEpisodes.find((episode) => {
+            const poster = String(
+              (episode as any)?.content?.posterUrl || "",
+            ).trim();
             return poster.length > 0;
           })?.content?.posterUrl;
 
@@ -318,9 +323,9 @@ export default function EpisodeListScreen() {
             return candidate.length > 0;
           })?.contentId || "";
 
-        const seriesLookupId =
-          String(contentIdFromEpisodes || resolvedContentId || normalizedSeriesId)
-            .trim();
+        const seriesLookupId = String(
+          contentIdFromEpisodes || resolvedContentId || normalizedSeriesId,
+        ).trim();
 
         const seriesLookupCandidates = Array.from(
           new Set(
@@ -366,7 +371,10 @@ export default function EpisodeListScreen() {
           seriesResults.find((entry) => entry.status === "fulfilled") ||
           null;
 
-        if (matchedSeriesResponse && matchedSeriesResponse.status === "fulfilled") {
+        if (
+          matchedSeriesResponse &&
+          matchedSeriesResponse.status === "fulfilled"
+        ) {
           const matchedSeries = matchedSeriesResponse.value.data;
           setSeriesTitle(matchedSeries?.title || "Series");
 
