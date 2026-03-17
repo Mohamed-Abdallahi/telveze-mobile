@@ -1,6 +1,7 @@
 import { ThemedText } from "@/components/themed-text";
 import { SeriesItem, videosAPI } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
+import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -37,6 +38,9 @@ export default function HomeScreenContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progressById, setProgressById] = useState<Record<string, number>>({});
+  const [isTrailerMuted, setIsTrailerMuted] = useState(true);
+  const [featuredTrailerFailed, setFeaturedTrailerFailed] =
+    useState<boolean>(false);
 
   const toRatio = (entry: any) => {
     if (!entry) return 0;
@@ -149,6 +153,10 @@ export default function HomeScreenContent() {
 
   const featuredSeries = series[0];
 
+  useEffect(() => {
+    setFeaturedTrailerFailed(false);
+  }, [featuredSeries?._id]);
+
   const categories = useMemo<HomeCategory[]>(() => {
     if (series.length === 0) {
       return [];
@@ -221,6 +229,10 @@ export default function HomeScreenContent() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
+            tintColor="#ff5e00"
+            colors={["#ff5e00"]}
+            progressBackgroundColor="#141414"
+            progressViewOffset={insets.top + 72}
             onRefresh={() => {
               void loadHomeSeries(true);
             }}
@@ -254,16 +266,42 @@ export default function HomeScreenContent() {
           </View>
         ) : featuredSeries ? (
           <View style={styles.heroContainer}>
-            <Image
-              source={
-                featuredSeries.posterUrl
-                  ? { uri: featuredSeries.posterUrl }
-                  : fallbackPoster
-              }
-              style={styles.heroImage}
-              contentFit="cover"
-              transition={300}
-            />
+            {featuredSeries.trailerUrl && !featuredTrailerFailed ? (
+              <Video
+                source={{ uri: featuredSeries.trailerUrl }}
+                style={styles.heroImage}
+                resizeMode={ResizeMode.COVER}
+                shouldPlay
+                isLooping
+                isMuted={isTrailerMuted}
+                useNativeControls={false}
+                onError={() => setFeaturedTrailerFailed(true)}
+              />
+            ) : (
+              <Image
+                source={
+                  featuredSeries.posterUrl
+                    ? { uri: featuredSeries.posterUrl }
+                    : fallbackPoster
+                }
+                style={styles.heroImage}
+                contentFit="cover"
+                transition={300}
+              />
+            )}
+
+            {featuredSeries.trailerUrl && !featuredTrailerFailed && (
+              <TouchableOpacity
+                style={styles.trailerMuteButton}
+                onPress={() => setIsTrailerMuted((currentValue) => !currentValue)}
+              >
+                <Ionicons
+                  name={isTrailerMuted ? "volume-mute" : "volume-high"}
+                  size={18}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+            )}
 
             <LinearGradient
               colors={["transparent", "rgba(0,0,0,0.9)"]}
@@ -479,10 +517,25 @@ const styles = StyleSheet.create({
   heroContainer: {
     height: POSTER_HEIGHT * 1.2,
     position: "relative",
+    marginTop: 100,
   },
   heroImage: {
     width: "100%",
     height: "100%",
+  },
+  trailerMuteButton: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    zIndex: 4,
   },
   heroGradient: {
     position: "absolute",
@@ -555,7 +608,8 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     backgroundColor: "rgba(255,255,255,0.2)",
-    backdropFilter: "blur(10px)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
   },
   secondaryButtonText: {
     color: "#fff",

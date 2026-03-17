@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { ResizeMode, Video } from "expo-av";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,20 +21,55 @@ export default function SeriesDetailsScreen() {
 
   const [loading, setLoading] = useState(true);
   const [series, setSeries] = useState<SeriesItem | null>(null);
+  const [trailerUrl, setTrailerUrl] = useState("");
+  const [trailerFailed, setTrailerFailed] = useState(false);
+
+  const resolveTrailerUrl = async (
+    directUrl?: string,
+    assetId?: string,
+  ): Promise<string> => {
+    const normalizedUrl = (directUrl || "").trim();
+    if (normalizedUrl) {
+      return normalizedUrl;
+    }
+
+    const normalizedAssetId = (assetId || "").trim();
+    if (!normalizedAssetId) {
+      return "";
+    }
+
+    try {
+      const streamPayload = await videosAPI.getStreamUrl(normalizedAssetId);
+      return streamPayload?.streamUrl || "";
+    } catch {
+      return `https://videodelivery.net/${normalizedAssetId}/manifest/video.m3u8`;
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
         setLoading(true);
-        const result = await videosAPI.listSeries({ limit: 100 });
-        const found =
-          (result.data || []).find((item) => item._id === seriesId) || null;
+        setTrailerFailed(false);
+
+        const seriesRes = await videosAPI.getSeriesById(seriesId);
+
+        const found = seriesRes.data || null;
         if (!mounted) return;
         setSeries(found);
+
+        const resolvedTrailer = await resolveTrailerUrl(
+          found?.trailerUrl,
+          found?.trailerAssetId,
+        );
+
+        if (!mounted) return;
+        setTrailerUrl(resolvedTrailer);
       } catch {
         if (!mounted) return;
         setSeries(null);
+        setTrailerUrl("");
       } finally {
         if (!mounted) return;
         setLoading(false);
@@ -79,14 +115,27 @@ export default function SeriesDetailsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
-      <Image
-        source={{
-          uri:
-            series.posterUrl ||
-            "https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&w=1000&q=80",
-        }}
-        style={styles.poster}
-      />
+      {trailerUrl && !trailerFailed ? (
+        <Video
+          source={{ uri: trailerUrl }}
+          style={styles.poster}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay
+          isLooping
+          isMuted
+          useNativeControls={false}
+          onError={() => setTrailerFailed(true)}
+        />
+      ) : (
+        <Image
+          source={{
+            uri:
+              series.posterUrl ||
+              "https://images.unsplash.com/photo-1478720568477-152d9b164e26?auto=format&fit=crop&w=1000&q=80",
+          }}
+          style={styles.poster}
+        />
+      )}
       <View style={styles.content}>
         <Text style={[styles.title, { color: palette.text }]}>
           {series.title}

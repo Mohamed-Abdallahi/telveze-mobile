@@ -4,7 +4,13 @@ import { useAuth, useSSO, useSignUp } from "@clerk/expo";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, Redirect } from "expo-router";
 import React from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  View,
+  ImageBackground,
+} from "react-native";
 
 const HOME_ROUTE = "/" as const;
 
@@ -58,66 +64,74 @@ export default function Page() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      {/* Logo */}
-      <View style={styles.logoContainer}>
-        <Image
-          source={require("@/assets/images/logo-telvese.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-      </View>
-
-      <View style={styles.contentContainer}>
-        <ThemedText style={styles.title}>Create Account</ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Join us to start watching
-        </ThemedText>
-
-        {/* Google Sign Up Button */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.googleButton,
-            oauthLoading && styles.buttonDisabled,
-            pressed && styles.buttonPressed,
-          ]}
-          onPress={handleGoogleSignUp}
-          disabled={oauthLoading}
-        >
-          <Ionicons name="logo-google" size={24} color="#000" />
-          <ThemedText style={styles.googleButtonText}>
-            {oauthLoading ? "Connecting..." : "Continue with Google"}
-          </ThemedText>
-        </Pressable>
-
-        {(globalErrorMessage || oauthError) && (
-          <ThemedText style={styles.error}>
-            {oauthError ?? globalErrorMessage}
-          </ThemedText>
-        )}
-
-        <View style={styles.linkContainer}>
-          <ThemedText style={styles.linkText}>
-            Already have an account?{" "}
-          </ThemedText>
-          <Link href="/(auth)/sign-in" asChild>
-            <Pressable>
-              <ThemedText style={styles.link}>Sign in</ThemedText>
-            </Pressable>
-          </Link>
+    <ImageBackground
+      source={require("@/assets/images/auth-bg.png")}
+      style={styles.container}
+    >
+      <View style={styles.overlay}>
+        {/* Logo */}
+        <View style={styles.logoContainer}>
+          <Image
+            source={require("@/assets/images/logo-telvese.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
-      </View>
 
-      {/* Required for sign-up flows. Clerk's bot sign-up protection is enabled by default */}
-      <View nativeID="clerk-captcha" />
-    </ThemedView>
+        <View style={styles.contentContainer}>
+          <ThemedText style={styles.title}>Create Account</ThemedText>
+          <ThemedText style={styles.subtitle}>
+            Join us to start watching
+          </ThemedText>
+
+          {/* Google Sign Up Button */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.googleButton,
+              oauthLoading && styles.buttonDisabled,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={handleGoogleSignUp}
+            disabled={oauthLoading}
+          >
+            <Ionicons name="logo-google" size={24} color="#fff" />
+            <ThemedText style={styles.googleButtonText}>
+              {oauthLoading ? "Connecting..." : "Continue with Google"}
+            </ThemedText>
+          </Pressable>
+
+          {(globalErrorMessage || oauthError) && (
+            <ThemedText style={styles.error}>
+              {oauthError ?? globalErrorMessage}
+            </ThemedText>
+          )}
+
+          <View style={styles.linkContainer}>
+            <ThemedText style={styles.linkText}>
+              Already have an account?{" "}
+            </ThemedText>
+            <Link href="/(auth)/sign-in" asChild>
+              <Pressable>
+                <ThemedText style={styles.link}>Sign in</ThemedText>
+              </Pressable>
+            </Link>
+          </View>
+        </View>
+
+        {/* Required for sign-up flows. Clerk's bot sign-up protection is enabled by default */}
+        <View nativeID="clerk-captcha" />
+      </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
   logoContainer: {
     alignItems: "center",
@@ -136,13 +150,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "700",
-    color: "#FF6B00",
+    color: "#FFFFFF",
     marginBottom: 8,
     textAlign: "center",
+    paddingVertical: 6,
   },
   subtitle: {
     fontSize: 16,
-    color: "#FFA500",
+    color: "#FFFFFF",
     marginBottom: 48,
     textAlign: "center",
     opacity: 0.8,
@@ -151,7 +166,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FF6B00",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 12,
@@ -159,20 +174,16 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     gap: 12,
     marginBottom: 24,
-    shadowColor: "#FF6B00",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    borderWidth: 1,
   },
   googleButtonText: {
-    color: "#000000",
+    color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "600",
   },
   buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -183,11 +194,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   linkText: {
-    color: "#FFA500",
+    color: "#FFFFFF",
     fontSize: 16,
   },
   link: {
-    color: "#FF6B00",
+    color: "#33ff00",
     fontSize: 16,
     fontWeight: "600",
     textDecorationLine: "underline",

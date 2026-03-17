@@ -1,24 +1,58 @@
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
 import { Fonts } from "@/constants/theme";
-import { EpisodeItem, SeasonItem, videosAPI } from "@/services/api";
+import {
+  BASE_URL,
+  EpisodeItem,
+  SeasonItem,
+  SeriesItem,
+  videosAPI,
+} from "@/services/api";
 
 const fallbackEpisodeThumb =
   "https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=800&q=80";
 
+const normalizeMediaUrl = (value?: string | null) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (/^data:/i.test(raw)) {
+    return raw;
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+
+  if (raw.startsWith("//")) {
+    return `https:${raw}`;
+  }
+
+  if (raw.startsWith("/")) {
+    return `${BASE_URL}${raw}`;
+  }
+
+  return `${BASE_URL}/${raw}`;
+};
+
 export default function EpisodeListScreen() {
-  const { seriesId } = useLocalSearchParams<{ seriesId: string }>();
+  const { seriesId } = useLocalSearchParams<{ seriesId: string | string[] }>();
+  const normalizedSeriesId = Array.isArray(seriesId) ? seriesId[0] : seriesId;
   const ui = {
     text: "#F8FAFC",
     muted: "#94A3B8",
@@ -35,9 +69,24 @@ export default function EpisodeListScreen() {
   const [episodes, setEpisodes] = useState<EpisodeItem[]>([]);
   const [seriesPosterUrl, setSeriesPosterUrl] =
     useState<string>(fallbackEpisodeThumb);
+  const [seriesTrailerUrl, setSeriesTrailerUrl] = useState("");
+  const [trailerLoadFailed, setTrailerLoadFailed] = useState(false);
+  const [isTrailerPlaying, setIsTrailerPlaying] = useState(true);
+  const [isTrailerMuted, setIsTrailerMuted] = useState(false);
+  const trailerVideoRef = useRef<Video>(null);
   const [progressByEpisode, setProgressByEpisode] = useState<
     Record<string, { ratio: number; lastSecond: number }>
   >({});
+
+  const handleEpisodePress = (episodeId: string) => {
+    setIsTrailerPlaying(false);
+    void trailerVideoRef.current?.pauseAsync();
+
+    router.push({
+      pathname: "/watch/[episodeId]",
+      params: { episodeId },
+    });
+  };
 
   const toProgress = (entry: any) => {
     if (!entry) {
@@ -80,9 +129,101 @@ export default function EpisodeListScreen() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const resolveTrailerUrl = async (series: SeriesItem | null) => {
+    if (!series) return "";
+
+    const trailerAssetId = series.trailerAssetId?.trim() || "";
+    if (trailerAssetId) {
+      try {
+        const streamData = await videosAPI.getStreamUrl(trailerAssetId);
+        if (streamData?.streamUrl) {
+          return streamData.streamUrl;
+        }
+      } catch {
+        // Fallback manifest URL for Cloudflare asset IDs.
+        return `https://videodelivery.net/${trailerAssetId}/manifest/video.m3u8`;
+      }
+    }
+
+    const directTrailer = series.trailerUrl?.trim() || "";
+    if (directTrailer) {
+      return directTrailer;
+    }
+
+    return "";
+  };
+
+  const resolveEpisodeTrailerUrl = async (episodeList: EpisodeItem[]) => {
+    for (const episode of episodeList) {
+      const trailerAssetId = episode.trailerAssetId?.trim() || "";
+      if (trailerAssetId) {
+        try {
+          const streamData = await videosAPI.getStreamUrl(trailerAssetId);
+          if (streamData?.streamUrl) {
+            return streamData.streamUrl;
+          }
+        } catch {
+          // Fallback manifest URL for Cloudflare asset IDs.
+          return `https://videodelivery.net/${trailerAssetId}/manifest/video.m3u8`;
+        }
+      }
+
+      const directTrailer = episode.trailerUrl?.trim() || "";
+      if (directTrailer) {
+        return directTrailer;
+      }
+    }
+
+    return "";
+  };
+
+  const resolveSeriesThumbnailUrl = (series: SeriesItem | null) => {
+    if (!series) return fallbackEpisodeThumb;
+
+    const rawCandidates = [
+      (series as any)?.posterUrl,
+      (series as any)?.posterURL,
+      (series as any)?.poster,
+      (series as any)?.imageUrl,
+      (series as any)?.poster?.url,
+    ];
+
+    const firstValid = rawCandidates.find(
+      (value) => typeof value === "string" && value.trim().length > 0,
+    ) as string | undefined;
+
+    if (!firstValid) return fallbackEpisodeThumb;
+
+    const normalized = normalizeMediaUrl(firstValid);
+    return normalized || fallbackEpisodeThumb;
+  };
+
+  const hasValidPoster = (series: SeriesItem | null) => {
+    const rawCandidates = [
+      (series as any)?.posterUrl,
+      (series as any)?.posterURL,
+      (series as any)?.poster,
+      (series as any)?.imageUrl,
+      (series as any)?.poster?.url,
+    ];
+
+    const firstValid = rawCandidates.find(
+      (value) => typeof value === "string" && value.trim().length > 0,
+    ) as string | undefined;
+
+    return Boolean(normalizeMediaUrl(firstValid));
+  };
+
+  const resolveEpisodeThumbnailUrl = () => {
+    const forcedSeriesImage = normalizeMediaUrl(seriesPosterUrl);
+    return forcedSeriesImage || fallbackEpisodeThumb;
+  };
+
   const loadEpisodes = useCallback(
     async (isRefresh = false) => {
-      if (!seriesId) return;
+      if (!normalizedSeriesId) return;
+
+      const refreshStartedAt = isRefresh ? Date.now() : 0;
 
       try {
         if (isRefresh) {
@@ -91,23 +232,155 @@ export default function EpisodeListScreen() {
           setLoading(true);
         }
 
-        const [seasonRes, episodeRes, seriesRes] = await Promise.all([
-          videosAPI.getSeriesSeasons(seriesId),
-          videosAPI.listEpisodes({
-            contentId: seriesId,
-            seasonId,
-            limit: 100,
-          }),
-          videosAPI.listSeries({ limit: 200 }),
+        const contentIdCandidates = Array.from(
+          new Set([
+            normalizedSeriesId,
+            (() => {
+              try {
+                return decodeURIComponent(normalizedSeriesId);
+              } catch {
+                return normalizedSeriesId;
+              }
+            })(),
+          ]),
+        ).filter(Boolean);
+
+        let episodeRes: { data: EpisodeItem[] } | null = null;
+        let episodeFetchError: unknown = null;
+        let resolvedContentId = normalizedSeriesId;
+
+        for (const contentIdCandidate of contentIdCandidates) {
+          try {
+            const filtered = await videosAPI.listEpisodes({
+              contentId: contentIdCandidate,
+              seasonId: seasonId === "all" ? undefined : seasonId,
+              limit: 100,
+              _ts: isRefresh ? Date.now() : undefined,
+            });
+
+            if (seasonId !== "all" && (filtered.data || []).length === 0) {
+              const allEpisodes = await videosAPI.listEpisodes({
+                contentId: contentIdCandidate,
+                seasonId: undefined,
+                limit: 100,
+                _ts: isRefresh ? Date.now() : undefined,
+              });
+              episodeRes = allEpisodes as { data: EpisodeItem[] };
+              setSeasonId("all");
+            } else {
+              episodeRes = filtered as { data: EpisodeItem[] };
+            }
+
+            resolvedContentId = contentIdCandidate;
+
+            break;
+          } catch (error) {
+            episodeFetchError = error;
+          }
+        }
+
+        if (!episodeRes) {
+          throw episodeFetchError || new Error("Failed to load episodes");
+        }
+
+        const nextEpisodes = episodeRes.data || [];
+        setEpisodes(nextEpisodes);
+
+        // Prefer normalized content poster from episodes payload when available.
+        const contentPoster = nextEpisodes.find((episode) => {
+          const poster = String(
+            episode?.contentPosterUrl || (episode as any)?.content?.posterUrl || "",
+          ).trim();
+          return poster.length > 0;
+        })?.contentPosterUrl ||
+          nextEpisodes.find((episode) => {
+            const poster = String((episode as any)?.content?.posterUrl || "").trim();
+            return poster.length > 0;
+          })?.content?.posterUrl;
+
+        if (contentPoster) {
+          const normalizedContentPoster = normalizeMediaUrl(contentPoster);
+          if (normalizedContentPoster) {
+            setSeriesPosterUrl(normalizedContentPoster);
+          }
+        }
+
+        const episodeTrailerUrl = await resolveEpisodeTrailerUrl(nextEpisodes);
+        if (episodeTrailerUrl) {
+          setSeriesTrailerUrl(episodeTrailerUrl);
+          setIsTrailerPlaying(true);
+          setTrailerLoadFailed(false);
+        }
+
+        const contentIdFromEpisodes =
+          nextEpisodes.find((episode) => {
+            const candidate = String(episode?.contentId || "").trim();
+            return candidate.length > 0;
+          })?.contentId || "";
+
+        const seriesLookupId =
+          String(contentIdFromEpisodes || resolvedContentId || normalizedSeriesId)
+            .trim();
+
+        const seriesLookupCandidates = Array.from(
+          new Set(
+            [
+              seriesLookupId,
+              String(resolvedContentId || "").trim(),
+              String(normalizedSeriesId || "").trim(),
+            ].filter((value) => value.length > 0),
+          ),
+        );
+
+        const [seasonRes, seriesResults] = await Promise.all([
+          videosAPI
+            .getSeriesSeasons(seriesLookupCandidates[0] || seriesLookupId)
+            .then((value) => ({ status: "fulfilled", value }) as const)
+            .catch((reason) => ({ status: "rejected", reason }) as const),
+          Promise.all(
+            seriesLookupCandidates.map(async (candidateId) => {
+              try {
+                const result = await videosAPI.getSeriesById(candidateId, {
+                  _ts: isRefresh ? Date.now() : undefined,
+                });
+                return { status: "fulfilled", value: result } as const;
+              } catch (reason) {
+                return { status: "rejected", reason } as const;
+              }
+            }),
+          ),
         ]);
 
-        setSeasons(seasonRes.data || []);
-        setEpisodes(episodeRes.data || []);
-        const matchedSeries = (seriesRes.data || []).find(
-          (item) => item._id === seriesId,
-        );
-        setSeriesTitle(matchedSeries?.title || "Series");
-        setSeriesPosterUrl(matchedSeries?.posterUrl || fallbackEpisodeThumb);
+        if (seasonRes.status === "fulfilled") {
+          setSeasons(seasonRes.value.data || []);
+        } else {
+          setSeasons([]);
+        }
+
+        const matchedSeriesResponse =
+          seriesResults.find(
+            (entry) =>
+              entry.status === "fulfilled" &&
+              hasValidPoster((entry as any).value?.data || null),
+          ) ||
+          seriesResults.find((entry) => entry.status === "fulfilled") ||
+          null;
+
+        if (matchedSeriesResponse && matchedSeriesResponse.status === "fulfilled") {
+          const matchedSeries = matchedSeriesResponse.value.data;
+          setSeriesTitle(matchedSeries?.title || "Series");
+
+          if (!contentPoster) {
+            setSeriesPosterUrl(resolveSeriesThumbnailUrl(matchedSeries));
+          }
+
+          if (!episodeTrailerUrl) {
+            const nextTrailerUrl = await resolveTrailerUrl(matchedSeries);
+            setSeriesTrailerUrl(nextTrailerUrl);
+            setIsTrailerPlaying(Boolean(nextTrailerUrl));
+            setTrailerLoadFailed(false);
+          }
+        }
 
         const episodeProgressPairs = await Promise.all(
           (episodeRes.data || []).map(async (episode) => {
@@ -155,8 +428,21 @@ export default function EpisodeListScreen() {
         setEpisodes([]);
         setSeriesTitle("Series");
         setSeriesPosterUrl(fallbackEpisodeThumb);
+        setSeriesTrailerUrl("");
+        setIsTrailerPlaying(false);
+        setTrailerLoadFailed(false);
         setProgressByEpisode({});
       } finally {
+        if (isRefresh) {
+          const elapsed = Date.now() - refreshStartedAt;
+          const minVisible = 500;
+          if (elapsed < minVisible) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, minVisible - elapsed),
+            );
+          }
+        }
+
         if (isRefresh) {
           setRefreshing(false);
         } else {
@@ -164,7 +450,7 @@ export default function EpisodeListScreen() {
         }
       }
     },
-    [seasonId, seriesId],
+    [seasonId, normalizedSeriesId],
   );
 
   useEffect(() => {
@@ -176,13 +462,71 @@ export default function EpisodeListScreen() {
   }, [loadEpisodes]);
 
   const headerLabel = useMemo(() => {
-    if (seasonId === "all") return "All Seasons";
+    if (seasonId === "all") return "";
     const season = seasons.find((item) => item._id === seasonId);
     return season ? `Season ${season.seasonNumber}` : "Selected Season";
   }, [seasonId, seasons]);
 
+  const showTrailer = Boolean(seriesTrailerUrl) && !trailerLoadFailed;
+
   return (
     <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerBackVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.replace("/(tabs)")}>
+              <Image
+                source={require("@/assets/images/logo-telvese.png")}
+                style={styles.headerLogo}
+                contentFit="cover"
+              />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      {showTrailer && (
+        <View style={styles.trailerContainer}>
+          <Video
+            ref={trailerVideoRef}
+            source={{ uri: seriesTrailerUrl }}
+            style={styles.trailerVideo}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={isTrailerPlaying}
+            isLooping
+            isMuted={isTrailerMuted}
+            useNativeControls={false}
+            onError={() => setTrailerLoadFailed(true)}
+          />
+          <View style={styles.trailerControlRow}>
+            <TouchableOpacity
+              style={styles.trailerControlButton}
+              onPress={() =>
+                setIsTrailerPlaying((currentValue) => !currentValue)
+              }
+            >
+              <Ionicons
+                name={isTrailerPlaying ? "pause" : "play"}
+                size={18}
+                color="#fff"
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.trailerControlButton}
+              onPress={() => setIsTrailerMuted((currentValue) => !currentValue)}
+            >
+              <Ionicons
+                name={isTrailerMuted ? "volume-mute" : "volume-high"}
+                size={18}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       <Text style={[styles.title, { color: ui.text }]}>{seriesTitle}</Text>
 
       <FlatList
@@ -239,10 +583,15 @@ export default function EpisodeListScreen() {
         <FlatList
           data={episodes}
           keyExtractor={(item) => item._id}
+          style={styles.episodeListContainer}
           contentContainerStyle={styles.episodeList}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
+              tintColor="#ff5e00"
+              colors={["#ff5e00"]}
+              progressBackgroundColor="#f0ae07"
+              {...(Platform.OS === "android" ? { progressViewOffset: 8 } : {})}
               onRefresh={() => {
                 void loadEpisodes(true);
               }}
@@ -261,15 +610,12 @@ export default function EpisodeListScreen() {
                 styles.episodeCard,
                 { borderColor: ui.border, backgroundColor: ui.card },
               ]}
-              onPress={() =>
-                router.push({
-                  pathname: "/watch/[episodeId]",
-                  params: { episodeId: item._id },
-                })
-              }
+              onPress={() => handleEpisodePress(item._id)}
             >
               <Image
-                source={{ uri: seriesPosterUrl || fallbackEpisodeThumb }}
+                source={{
+                  uri: resolveEpisodeThumbnailUrl(),
+                }}
                 style={styles.episodeThumb}
                 contentFit="cover"
                 transition={200}
@@ -323,6 +669,42 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 16,
   },
+  headerLogo: {
+    width: 200,
+    height: 46,
+  },
+  trailerContainer: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#0F1014",
+    borderWidth: 1,
+    borderColor: "#232428",
+    marginBottom: 14,
+  },
+  trailerVideo: {
+    width: "100%",
+    height: "100%",
+  },
+  trailerControlButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.48)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+  },
+  trailerControlRow: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   title: {
     fontFamily: Fonts.sans,
     fontSize: 24,
@@ -355,6 +737,9 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
     gap: 10,
+  },
+  episodeListContainer: {
+    flex: 1,
   },
   skeletonList: {
     paddingTop: 10,

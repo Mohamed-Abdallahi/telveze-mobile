@@ -142,6 +142,7 @@ export type SeriesItem = {
   description?: string;
   type: "series" | "movie" | "podcast";
   posterUrl?: string;
+  trailerAssetId?: string;
   trailerUrl?: string;
   genres?: string[];
   releaseYear?: number;
@@ -155,17 +156,22 @@ export type SeasonItem = {
   contentId: string;
   seasonNumber: number;
   title?: string;
+  trailerAssetId?: string;
+  trailerUrl?: string;
 };
 
 export type EpisodeItem = {
   _id: string;
   contentId: string;
+  contentPosterUrl?: string;
   seasonId?: string;
   episodeNumber: number;
   title: string;
   description?: string;
   assetType: "video" | "audio";
   assetId: string;
+  trailerAssetId?: string;
+  trailerUrl?: string;
   thumbnailUrl?: string;
   isPublished?: boolean;
   season?: {
@@ -173,6 +179,177 @@ export type EpisodeItem = {
     seasonNumber: number;
     title?: string;
   } | null;
+  content?: {
+    _id: string;
+    title?: string;
+    posterUrl?: string;
+    trailerAssetId?: string;
+    trailerUrl?: string;
+    type?: "series" | "movie" | "podcast";
+  } | null;
+};
+
+const toArray = <T>(value: unknown): T[] => {
+  if (Array.isArray(value)) return value as T[];
+  return [];
+};
+
+const firstNonEmptyArray = <T>(...values: unknown[]): T[] => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) {
+      return value as T[];
+    }
+  }
+
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      return value as T[];
+    }
+  }
+
+  return [];
+};
+
+const normalizeEpisode = (raw: any): EpisodeItem => {
+  const contentRef = raw?.contentId ?? raw?.content;
+  const normalizedContentId =
+    contentRef && typeof contentRef === "object"
+      ? String(contentRef?._id || contentRef?.id || "")
+      : String(contentRef || "");
+
+  const seasonIdRef = raw?.seasonId;
+  const normalizedSeasonId =
+    seasonIdRef && typeof seasonIdRef === "object"
+      ? String(seasonIdRef?._id || seasonIdRef?.id || "")
+      : seasonIdRef
+        ? String(seasonIdRef)
+        : undefined;
+
+  const seasonRaw = raw?.season;
+  const season = seasonRaw
+    ? {
+        _id: String(seasonRaw?._id || seasonRaw?.id || ""),
+        seasonNumber: Number(seasonRaw?.seasonNumber || 0),
+        title: seasonRaw?.title,
+      }
+    : null;
+
+  const contentRaw =
+    contentRef && typeof contentRef === "object" ? contentRef : raw?.content;
+  const content = contentRaw
+    ? {
+        _id: String(contentRaw?._id || contentRaw?.id || ""),
+        title: contentRaw?.title,
+        posterUrl:
+          contentRaw?.posterUrl ||
+          contentRaw?.posterURL ||
+          contentRaw?.poster ||
+          contentRaw?.thumbnailUrl,
+        trailerAssetId: contentRaw?.trailerAssetId,
+        trailerUrl: contentRaw?.trailerUrl,
+        type:
+          contentRaw?.type === "movie" || contentRaw?.type === "podcast"
+            ? contentRaw.type
+            : contentRaw?.type === "series"
+              ? "series"
+              : undefined,
+      }
+    : null;
+
+  const contentPosterUrl =
+    content?.posterUrl ||
+    raw?.contentPosterUrl ||
+    raw?.contentImageUrl ||
+    (raw?.content && raw.content?.posterUrl) ||
+    undefined;
+
+  return {
+    _id: String(raw?._id || raw?.id || ""),
+    contentId: normalizedContentId,
+    contentPosterUrl:
+      typeof contentPosterUrl === "string" && contentPosterUrl.trim().length > 0
+        ? contentPosterUrl.trim()
+        : undefined,
+    seasonId: normalizedSeasonId,
+    episodeNumber: Number(raw?.episodeNumber || 0),
+    title: String(raw?.title || "Untitled"),
+    description: raw?.description,
+    assetType: raw?.assetType === "audio" ? "audio" : "video",
+    assetId: String(raw?.assetId || ""),
+    trailerAssetId: raw?.trailerAssetId,
+    trailerUrl: raw?.trailerUrl,
+    thumbnailUrl: raw?.thumbnailUrl,
+    isPublished: raw?.isPublished,
+    season,
+    content,
+  };
+};
+
+const normalizeSeries = (raw: any): SeriesItem | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const id = String(raw?._id || raw?.id || "").trim();
+  if (!id) {
+    return null;
+  }
+
+  const typeRaw = String(raw?.type || "series").toLowerCase();
+  const type: SeriesItem["type"] =
+    typeRaw === "movie" || typeRaw === "podcast" ? (typeRaw as any) : "series";
+
+  return {
+    _id: id,
+    title: String(raw?.title || raw?.name || "Series"),
+    description: raw?.description,
+    type,
+    posterUrl: raw?.posterUrl || raw?.posterURL || raw?.poster || raw?.thumbnailUrl,
+    trailerAssetId: raw?.trailerAssetId,
+    trailerUrl: raw?.trailerUrl,
+    genres: Array.isArray(raw?.genres) ? raw.genres : undefined,
+    releaseYear:
+      typeof raw?.releaseYear === "number" ? raw.releaseYear : undefined,
+    isPublished:
+      typeof raw?.isPublished === "boolean" ? raw.isPublished : undefined,
+    seasonCount:
+      typeof raw?.seasonCount === "number" ? raw.seasonCount : undefined,
+    episodeCount:
+      typeof raw?.episodeCount === "number" ? raw.episodeCount : undefined,
+  };
+};
+
+const extractEpisodesFromPayload = (payload: any): EpisodeItem[] => {
+  const rawEpisodes = firstNonEmptyArray<any>(
+    payload,
+    payload?.data,
+    payload?.data?.episodes,
+    payload?.episodes,
+  );
+
+  return rawEpisodes
+    .map(normalizeEpisode)
+    .filter((episode) => Boolean(episode._id));
+};
+
+const extractSeasonsFromPayload = (payload: any): SeasonItem[] => {
+  const rawSeasons = firstNonEmptyArray<any>(
+    payload,
+    payload?.data,
+    payload?.data?.seasons,
+    payload?.seasons,
+  );
+
+  return rawSeasons
+    .map((raw) => ({
+      _id: String(raw?._id || raw?.id || ""),
+      contentId: String(raw?.contentId || raw?.content || ""),
+      seasonNumber: Number(raw?.seasonNumber || 0),
+      title: raw?.title,
+      trailerAssetId: raw?.trailerAssetId,
+      trailerUrl: raw?.trailerUrl,
+    }))
+    .filter((season) => Boolean(season._id));
 };
 
 type NormalizedWatchProgress = {
@@ -220,6 +397,7 @@ export const videosAPI = {
     genre?: string;
     year?: string;
     publishedOnly?: boolean;
+    _ts?: number;
   }) => {
     const {
       search = "",
@@ -228,10 +406,11 @@ export const videosAPI = {
       genre,
       year,
       publishedOnly = true,
+      _ts,
     } = params || {};
 
     const response = await api.get("/admin/series", {
-      params: { search, page, limit },
+      params: { search, page, limit, _ts },
     });
 
     const payload = response.data;
@@ -281,11 +460,28 @@ export const videosAPI = {
   getSeriesSeasons: async (seriesId: string) => {
     const response = await api.get(`/admin/series/${seriesId}/seasons`);
     const payload = response.data;
+    const seasons = extractSeasonsFromPayload(payload);
 
     return {
       success: Boolean(payload?.success),
-      data: (payload?.data || []) as SeasonItem[],
-      count: payload?.count || 0,
+      data: seasons,
+      count: payload?.count || seasons.length,
+    };
+  },
+
+  getSeriesById: async (seriesId: string, params?: { _ts?: number }) => {
+    const response = await api.get(`/admin/series/${seriesId}`, {
+      params,
+    });
+    const payload = response.data;
+    const source = payload?.data && typeof payload.data === "object"
+      ? payload.data
+      : payload;
+    const series = normalizeSeries(source);
+
+    return {
+      success: Boolean(payload?.success),
+      data: series,
     };
   },
 
@@ -295,13 +491,58 @@ export const videosAPI = {
     search?: string;
     page?: number;
     limit?: number;
+    _ts?: number;
   }) => {
-    const response = await api.get("/admin/episodes", { params });
-    const payload = response.data;
+    const {
+      contentId,
+      seasonId,
+      search,
+      page,
+      limit,
+      _ts,
+    } = params;
+
+    const baseParams = {
+      seasonId,
+      search,
+      page,
+      limit,
+      _ts,
+    };
+
+    const candidates = [
+      { ...baseParams, contentId },
+      { ...baseParams, seriesId: contentId },
+      { ...baseParams, content: contentId },
+    ];
+
+    let payload: any = null;
+    let parsed: EpisodeItem[] = [];
+    let lastError: unknown = null;
+
+    for (const candidateParams of candidates) {
+      try {
+        const response = await api.get("/admin/episodes", {
+          params: candidateParams,
+        });
+        payload = response.data;
+        parsed = extractEpisodesFromPayload(payload);
+
+        if (parsed.length > 0) {
+          break;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (!payload && lastError) {
+      throw lastError;
+    }
 
     return {
       success: Boolean(payload?.success),
-      data: (payload?.data || []) as EpisodeItem[],
+      data: parsed,
       meta: payload?.meta,
     };
   },

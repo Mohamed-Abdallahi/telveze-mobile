@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 28,
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
   },
   mainContent: {
     gap: 16,
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   logoutSection: {
-    marginTop: 20,
+    marginTop: 14,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,

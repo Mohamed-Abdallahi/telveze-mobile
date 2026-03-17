@@ -17,7 +17,7 @@ import {
 interface VideoPlayerProps {
   videoId: string;
   progressId?: string;
-  onClose?: () => void;
+  onClose?: () => void | Promise<void>;
 }
 
 export default function VideoPlayer({
@@ -351,6 +351,19 @@ export default function VideoPlayer({
     revealControls();
   };
 
+  const handleClosePress = async () => {
+    try {
+      if (videoRef.current) {
+        await videoRef.current.pauseAsync();
+      }
+    } catch {
+      // ignore pause errors on close.
+    }
+
+    await saveProgressSnapshot();
+    await onClose?.();
+  };
+
   const formatTime = (milliseconds: number) => {
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -425,7 +438,12 @@ export default function VideoPlayer({
         <Ionicons name="alert-circle" size={64} color="#E50914" />
         <ThemedText style={styles.errorText}>{error}</ThemedText>
         {onClose && (
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              void handleClosePress();
+            }}
+          >
             <ThemedText style={styles.closeButtonText}>Close</ThemedText>
           </TouchableOpacity>
         )}
@@ -455,7 +473,12 @@ export default function VideoPlayer({
             <View style={styles.controlsOverlay} pointerEvents="box-none">
               <View style={styles.topControlRow}>
                 {onClose ? (
-                  <TouchableOpacity style={styles.iconChip} onPress={onClose}>
+                  <TouchableOpacity
+                    style={styles.iconChip}
+                    onPress={() => {
+                      void handleClosePress();
+                    }}
+                  >
                     <Ionicons name="close" size={24} color="#fff" />
                   </TouchableOpacity>
                 ) : (
